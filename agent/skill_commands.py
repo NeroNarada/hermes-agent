@@ -27,6 +27,17 @@ _SKILL_INVALID_CHARS = re.compile(r"[^a-z0-9-]")
 _SKILL_MULTI_HYPHEN = re.compile(r"-{2,}")
 
 
+def _supporting_file_path(value: Any) -> str:
+    """Return a stable, skill_view-compatible relative supporting-file path.
+
+    ``Path.relative_to()`` stringifies with backslashes on Windows. Skill
+    helper text and ``skill_view(file_path=...)`` examples should use forward
+    slashes so the same invocation works across platforms and matches the
+    paths documented in skills.
+    """
+    return str(value).replace("\\", "/")
+
+
 def _resolve_skill_commands_platform() -> Optional[str]:
     """Return the current platform scope used for disabled-skill filtering.
 
@@ -208,7 +219,7 @@ def _build_skill_message(
             if subdir_path.exists():
                 for f in sorted(subdir_path.rglob("*")):
                     if f.is_file() and not f.is_symlink():
-                        rel = str(f.relative_to(skill_dir))
+                        rel = f.relative_to(skill_dir).as_posix()
                         supporting.append(rel)
 
     if supporting and skill_dir:
@@ -220,6 +231,7 @@ def _build_skill_message(
         parts.append("")
         parts.append("[This skill has supporting files:]")
         for sf in supporting:
+            sf = _supporting_file_path(sf)
             parts.append(f"- {sf}  ->  {skill_dir / sf}")
         parts.append(
             f'\nLoad any of these with skill_view(name="{skill_view_target}", '

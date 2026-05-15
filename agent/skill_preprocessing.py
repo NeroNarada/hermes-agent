@@ -1,6 +1,7 @@
 """Shared SKILL.md preprocessing helpers."""
 
 import logging
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -60,6 +61,28 @@ def substitute_template_vars(
     return _SKILL_TEMPLATE_RE.sub(_replace, content)
 
 
+def _normalize_inline_shell_output(output: str, cwd: Path | None) -> str:
+    """Normalize bash's printed CWD back to the native path on Windows.
+
+    Git Bash/MSYS reports Windows working directories as POSIX-ish paths
+    (for example ``/mnt/c/Users/...``) when a snippet runs ``pwd``.  The rest
+    of Hermes exposes native ``Path`` strings in skill messages, so convert the
+    exact CWD output back for stable cross-platform behavior while leaving all
+    other command output untouched.
+    """
+    if os.name != "nt" or not cwd or not output:
+        return output
+    try:
+        native = str(Path(cwd))
+        resolved = Path(cwd).resolve()
+        drive = resolved.drive.rstrip(":").lower()
+        tail = resolved.as_posix().split(":", 1)[-1]
+        aliases = {f"/{drive}{tail}", f"/mnt/{drive}{tail}"} if drive else set()
+        return native if output in aliases else output
+    except Exception:
+        return output
+
+
 def run_inline_shell(command: str, cwd: Path | None, timeout: int) -> str:
     """Execute a single inline-shell snippet and return its stdout (trimmed).
 
@@ -87,7 +110,7 @@ def run_inline_shell(command: str, cwd: Path | None, timeout: int) -> str:
         output = completed.stderr.rstrip("\n")
     if len(output) > _INLINE_SHELL_MAX_OUTPUT:
         output = output[:_INLINE_SHELL_MAX_OUTPUT] + "...[truncated]"
-    return output
+    return _normalize_inline_shell_output(output, cwd)
 
 
 def expand_inline_shell(
